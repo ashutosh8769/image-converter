@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AVIF Studio - Unlimited Offline Image Converter</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Phosphor Icons CDN -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <!-- JSZip CDN for batch zip download -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    .checkerboard-pattern {
+      background-image: 
+        linear-gradient(45deg, #1e293b 25%, transparent 25%), 
+        linear-gradient(-45deg, #1e293b 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #1e293b 75%), 
+        linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white font-black text-xl tracking-tighter">
+          A<span class="text-xs text-cyan-200">v</span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-lg leading-tight tracking-tight text-white">AVIF Studio</h1>
+            <span class="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Offline & Unlimited
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Client-side instant conversion directly in browser canvas</p>
+        </div>
+      </div>
+
+      <!-- AVIF Support Indicator badge -->
+      <div id="avifSupportBadge" class="hidden text-xs px-3 py-1.5 rounded-lg border font-medium flex items-center gap-2">
+        <!-- Populated via JS -->
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-8">
+    
+    <!-- Top Action / Setting Bar -->
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
+      <!-- Quality Slider Card -->
+      <div class="md:col-span-8 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i class="ph ph-sliders text-indigo-400 text-lg"></i>
+            <label for="qualitySlider" class="font-medium text-sm text-slate-200">Compression Quality</label>
+            <span class="text-xs text-slate-500">(Applies to upcoming conversions)</span>
+          </div>
+          <span id="qualityValDisplay" class="font-mono text-sm px-2.5 py-0.5 rounded-md bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-bold">
+            80%
+          </span>
+        </div>
+
+        <div class="space-y-2">
+          <input 
+            type="range" 
+            id="qualitySlider" 
+            min="5" 
+            max="100" 
+            value="80" 
+            step="1"
+            class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 transition-all focus:outline-none"
+          />
+          <div class="flex justify-between text-[11px] text-slate-500 font-mono">
+            <span>5% (Smallest size)</span>
+            <span>50% (Balanced)</span>
+            <span>80% (Recommended)</span>
+            <span>100% (Lossless / High quality)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Action Controls -->
+      <div class="md:col-span-4 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between gap-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-slate-400 font-medium">Batch Operations</span>
+          <span id="totalFilesCounter" class="text-xs text-slate-500">0 items</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button 
+            id="downloadZipBtn" 
+            disabled 
+            class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-indigo-600/20 transition-all disabled:cursor-not-allowed"
+          >
+            <i class="ph-bold ph-file-zip text-base"></i>
+            <span>Download ZIP</span>
+          </button>
+
+          <button 
+            id="clearAllBtn" 
+            disabled 
+            title="Clear list"
+            class="p-2.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-rose-500/20 hover:border-rose-500/40 hover:text-rose-400 text-slate-400 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <i class="ph ph-trash text-lg"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drag & Drop Zone -->
+    <div 
+      id="dropZone" 
+      class="border-2 border-dashed border-slate-700 hover:border-indigo-500 hover:bg-indigo-500/5 bg-slate-900/40 transition-all rounded-3xl p-8 sm:p-12 text-center flex flex-col items-center justify-center cursor-pointer group relative overflow-hidden"
+    >
+      <input 
+        type="file" 
+        id="fileInput" 
+        multiple 
+        accept="image/*" 
+        class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+      />
+      <div class="w-16 h-16 rounded-2xl bg-indigo-600/10 text-indigo-400 flex items-center justify-center mb-4 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-inner">
+        <i class="ph ph-cloud-arrow-up text-3xl"></i>
+      </div>
+      <h3 class="text-lg font-semibold text-slate-100 group-hover:text-indigo-300 transition-colors">
+        Drop images here or <span class="text-indigo-400 underline underline-offset-4 decoration-indigo-500/50">browse files</span>
+      </h3>
+      <p class="text-sm text-slate-400 mt-1 max-w-sm">
+        Supports JPG, PNG, WebP, GIF, BMP, TIFF, SVG. All processing happens 100% locally on your machine.
+      </p>
+      <div class="mt-4 flex flex-wrap justify-center gap-2">
+        <span class="text-[11px] px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 border border-slate-700 font-mono">Zero Server Upload</span>
+        <span class="text-[11px] px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 border border-slate-700 font-mono">Infinite Files</span>
+        <span class="text-[11px] px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 border border-slate-700 font-mono">High Efficiency AVIF</span>
+      </div>
+    </div>
+
+    <!-- Conversion Queue / Results Section -->
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold text-slate-200 flex items-center gap-2">
+          <span>Converted Images</span>
+          <span id="queueBadge" class="hidden text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">0</span>
+        </h2>
+        <div id="summaryStats" class="text-xs text-slate-400 hidden">
+          <!-- Cumulative savings summary populated by JS -->
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="bg-slate-900/30 border border-slate-800/80 rounded-2xl p-12 text-center">
+        <div class="text-slate-600 mb-2">
+          <i class="ph ph-images-square text-4xl"></i>
+        </div>
+        <p class="text-sm text-slate-400">No images converted yet. Upload or drop images above to begin!</p>
+      </div>
+
+      <!-- Items List -->
+      <div id="itemsContainer" class="space-y-3">
+        <!-- Dynamic conversion cards injected here -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Notification Toast Container -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- JavaScript Implementation -->
+  <script>
+    // State management
+    const state = {
+      items: [], // { id, file, originalSize, avifBlob, avifSize, previewUrl, status, quality }
+      isConverting: false
+    };
+
+    // DOM Elements
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const qualitySlider = document.getElementById('qualitySlider');
+    const qualityValDisplay = document.getElementById('qualityValDisplay');
+    const itemsContainer = document.getElementById('itemsContainer');
+    const emptyState = document.getElementById('emptyState');
+    const downloadZipBtn = document.getElementById('downloadZipBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const totalFilesCounter = document.getElementById('totalFilesCounter');
+    const queueBadge = document.getElementById('queueBadge');
+    const summaryStats = document.getElementById('summaryStats');
+    const avifSupportBadge = document.getElementById('avifSupportBadge');
+    const toastContainer = document.getElementById('toastContainer');
+
+    // Helper: Show toast notifications
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      const bg = type === 'error' ? 'bg-rose-500/90 text-white' : 
+                 type === 'success' ? 'bg-emerald-600/90 text-white' : 'bg-slate-800 text-slate-200 border border-slate-700';
+      toast.className = `${bg} px-4 py-3 rounded-xl shadow-xl backdrop-blur-md text-xs font-medium flex items-center gap-2 pointer-events-auto transition-all duration-300 transform translate-y-2 opacity-0`;
+      
+      const icon = type === 'error' ? '<i class="ph-bold ph-warning-circle text-base"></i>' :
+                   type === 'success' ? '<i class="ph-bold ph-check-circle text-base"></i>' : '<i class="ph ph-info text-base"></i>';
+
+      toast.innerHTML = `${icon}<span>${message}</span>`;
+      toastContainer.appendChild(toast);
+
+      // Animate in
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      // Remove after 3.5s
+      setTimeout(() => {
+        toast.classList.add('translate-y-2', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    // Check Native AVIF canvas encoding support
+    async function checkAvifSupport() {
+      const testCanvas = document.createElement('canvas');
+      testCanvas.width = 1;
+      testCanvas.height = 1;
+      return new Promise(resolve => {
+        testCanvas.toBlob(blob => {
+          if (blob && blob.type === 'image/avif') {
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        }, 'image/avif');
+      });
+    }
+
+    // Initialize support check
+    (async () => {
+      const isSupported = await checkAvifSupport();
+      avifSupportBadge.classList.remove('hidden');
+      if (isSupported) {
+        avifSupportBadge.className = 'text-xs px-3 py-1.5 rounded-lg border font-medium flex items-center gap-2 bg-emerald-500/10 border-emerald-500/30 text-emerald-300';
+        avifSupportBadge.innerHTML = '<i class="ph-bold ph-check text-emerald-400"></i><span>Native AVIF Hardware Supported</span>';
+      } else {
+        avifSupportBadge.className = 'text-xs px-3 py-1.5 rounded-lg border font-medium flex items-center gap-2 bg-amber-500/10 border-amber-500/30 text-amber-300';
+        avifSupportBadge.innerHTML = '<i class="ph-bold ph-warning text-amber-400"></i><span>Browser lacks native canvas AVIF export (Chrome/Edge/Firefox modern recommended)</span>';
+        showToast('Your current browser might not support native Canvas to AVIF conversion. Please use a modern version of Chrome, Edge, or Firefox.', 'error');
+      }
+    })();
+
+    // Update slider label
+    qualitySlider.addEventListener('input', (e) => {
+      qualityValDisplay.textContent = `${e.target.value}%`;
+    });
+
+    // Format bytes
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Handle files ingestion
+    function handleIncomingFiles(fileList) {
+      const validFiles = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+      if (validFiles.length === 0) {
+        showToast('Please select valid image files.', 'error');
+        return;
+      }
+
+      const currentQuality = parseInt(qualitySlider.value, 10) / 100;
+
+      validFiles.forEach(file => {
+        const item = {
+          id: 'img_' + Math.random().toString(36).substring(2, 9),
+          file: file,
+          name: file.name,
+          baseName: file.name.substring(0, file.name.lastIndexOf('.')) || file.name,
+          originalSize: file.size,
+          avifBlob: null,
+          avifSize: 0,
+          previewUrl: URL.createObjectURL(file),
+          status: 'pending', // 'pending', 'converting', 'done', 'error'
+          quality: currentQuality,
+          savings: 0
+        };
+        state.items.unshift(item);
+      });
+
+      updateUI();
+      processQueue();
+    }
+
+    // Convert single image to AVIF using Canvas
+    async function convertImageToAvif(item) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width;
+            canvas.height = img.naturalHeight || img.height;
+
+            const ctx = canvas.getContext('2d');
+            // Draw image directly
+            ctx.drawImage(img, 0, 0);
+
+            // Export to AVIF with desired quality
+            canvas.toBlob(
+              (blob) => {
+                if (blob && (blob.type === 'image/avif' || blob.size > 0)) {
+                  item.avifBlob = blob;
+                  item.avifSize = blob.size;
+                  item.status = 'done';
+                  item.savings = Math.max(0, ((item.originalSize - blob.size) / item.originalSize) * 100);
+                  resolve(item);
+                } else {
+                  item.status = 'error';
+                  reject(new Error('Conversion returned null or unsupported mime'));
+                }
+              },
+              'image/avif',
+              item.quality
+            );
+          } catch (err) {
+            item.status = 'error';
+            reject(err);
+          }
+        };
+
+        img.onerror = () => {
+          item.status = 'error';
+          reject(new Error('Failed to load image into DOM'));
+        };
+
+        img.src = item.previewUrl;
+      });
+    }
+
+    // Process queued conversion items sequentially or asynchronously
+    async function processQueue() {
+      if (state.isConverting) return;
+      state.isConverting = true;
+
+      const pending = state.items.filter(item => item.status === 'pending');
+      for (const item of pending) {
+        item.status = 'converting';
+        renderItemCard(item);
+
+        try {
+          await convertImageToAvif(item);
+        } catch (err) {
+          console.error('Conversion failed for:', item.name, err);
+          item.status = 'error';
+        }
+        renderItemCard(item);
+        updateSummary();
+      }
+
+      state.isConverting = false;
+      updateUI();
+    }
+
+    // Render individual item card
+    function renderItemCard(item) {
+      let card = document.getElementById(item.id);
+      if (!card) {
+        card = document.createElement('div');
+        card.id = item.id;
+        card.className = "bg-slate-900/90 border border-slate-800/90 hover:border-slate-700 rounded-2xl p-4 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm";
+        itemsContainer.prepend(card);
+      }
+
+      const isDone = item.status === 'done';
+      const isError = item.status === 'error';
+      const isConverting = item.status === 'converting';
+
+      const savingsPct = isDone ? Math.round(((item.originalSize - item.avifSize) / item.originalSize) * 100) : 0;
+      const isSmaller = isDone && item.avifSize < item.originalSize;
+
+      card.innerHTML = `
+        <div class="flex items-center gap-4 min-w-0">
+          <div class="w-14 h-14 rounded-xl overflow-hidden bg-slate-950 flex-shrink-0 border border-slate-800 checkerboard-pattern relative">
+            <img src="${item.previewUrl}" alt="preview" class="w-full h-full object-contain" />
+          </div>
+          
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 truncate">
+              <span class="font-medium text-sm text-slate-100 truncate">${escapeHtml(item.name)}</span>
+              <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                ${item.file.type.split('/')[1] || 'IMG'} &rarr; AVIF
+              </span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 text-xs text-slate-400 mt-1 font-mono">
+              <span>Original: <strong class="text-slate-300 font-normal">${formatBytes(item.originalSize)}</strong></span>
+              
+              ${isDone ? `
+                <span class="text-slate-600">&bull;</span>
+                <span>AVIF: <strong class="text-indigo-300 font-bold">${formatBytes(item.avifSize)}</strong></span>
+                <span class="text-slate-600">&bull;</span>
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                  isSmaller ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                }">
+                  ${isSmaller ? `-${savingsPct}% saved` : `+${Math.abs(savingsPct)}% larger`}
+                </span>
+              ` : ''}
+
+              ${isConverting ? `
+                <span class="text-indigo-400 flex items-center gap-1 font-sans">
+                  <i class="ph ph-spinner animate-spin"></i> Converting (${Math.round(item.quality * 100)}% quality)...
+                </span>
+              ` : ''}
+
+              ${isError ? `
+                <span class="text-rose-400 flex items-center gap-1 font-sans">
+                  <i class="ph-bold ph-x-circle"></i> Conversion failed
+                </span>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 self-end md:self-center flex-shrink-0">
+          ${isDone ? `
+            <button 
+              onclick="downloadSingle('${item.id}')" 
+              class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white font-medium text-xs border border-slate-700 hover:border-indigo-500 transition-all shadow-sm"
+            >
+              <i class="ph ph-download-simple text-sm"></i>
+              <span>Save AVIF</span>
+            </button>
+          ` : ''}
+
+          <button 
+            onclick="removeItem('${item.id}')" 
+            title="Remove file"
+            class="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+          >
+            <i class="ph ph-x text-base"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    // Helper: Escape HTML string
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // UI state updates
+    function updateUI() {
+      const count = state.items.length;
+      totalFilesCounter.textContent = `${count} ${count === 1 ? 'file' : 'files'}`;
+      queueBadge.textContent = count;
+
+      if (count > 0) {
+        emptyState.classList.add('hidden');
+        queueBadge.classList.remove('hidden');
+        clearAllBtn.disabled = false;
+      } else {
+        emptyState.classList.remove('hidden');
+        queueBadge.classList.add('hidden');
+        clearAllBtn.disabled = true;
+        downloadZipBtn.disabled = true;
+        itemsContainer.innerHTML = '';
+        summaryStats.classList.add('hidden');
+      }
+
+      const doneItems = state.items.filter(i => i.status === 'done');
+      downloadZipBtn.disabled = doneItems.length === 0;
+
+      updateSummary();
+    }
+
+    // Summary calculation
+    function updateSummary() {
+      const doneItems = state.items.filter(i => i.status === 'done');
+      if (doneItems.length === 0) {
+        summaryStats.classList.add('hidden');
+        return;
+      }
+
+      const totalOrig = doneItems.reduce((acc, curr) => acc + curr.originalSize, 0);
+      const totalAvif = doneItems.reduce((acc, curr) => acc + curr.avifSize, 0);
+      const savedBytes = totalOrig - totalAvif;
+      const totalPct = totalOrig > 0 ? Math.round((savedBytes / totalOrig) * 100) : 0;
+
+      summaryStats.classList.remove('hidden');
+      summaryStats.innerHTML = `
+        <span>Total: <strong>${formatBytes(totalOrig)}</strong> &rarr; <strong class="text-indigo-300">${formatBytes(totalAvif)}</strong></span>
+        <span class="ml-2 font-semibold text-emerald-400 font-mono">(${totalPct >= 0 ? '-' : '+'}${Math.abs(totalPct)}% overall)</span>
+      `;
+    }
+
+    // Download a single item
+    window.downloadSingle = function(id) {
+      const item = state.items.find(i => i.id === id);
+      if (!item || !item.avifBlob) return;
+
+      const url = URL.createObjectURL(item.avifBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${item.baseName}.avif`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`Downloaded ${item.baseName}.avif`, 'success');
+    };
+
+    // Remove single item
+    window.removeItem = function(id) {
+      const index = state.items.findIndex(i => i.id === id);
+      if (index !== -1) {
+        const [item] = state.items.splice(index, 1);
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        const card = document.getElementById(id);
+        if (card) card.remove();
+        updateUI();
+      }
+    };
+
+    // Clear all files
+    clearAllBtn.addEventListener('click', () => {
+      state.items.forEach(item => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
+      state.items = [];
+      updateUI();
+      showToast('Queue cleared.');
+    });
+
+    // Batch download all completed as a ZIP file
+    downloadZipBtn.addEventListener('click', async () => {
+      const doneItems = state.items.filter(i => i.status === 'done' && i.avifBlob);
+      if (doneItems.length === 0) return;
+
+      try {
+        downloadZipBtn.disabled = true;
+        downloadZipBtn.innerHTML = '<i class="ph ph-spinner animate-spin text-base"></i><span>Compressing ZIP...</span>';
+
+        const zip = new JSZip();
+        const usedNames = new Set();
+
+        doneItems.forEach(item => {
+          let fileName = `${item.baseName}.avif`;
+          let counter = 1;
+          while (usedNames.has(fileName)) {
+            fileName = `${item.baseName}_${counter}.avif`;
+            counter++;
+          }
+          usedNames.add(fileName);
+          zip.file(fileName, item.avifBlob);
+        });
+
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `avif_converted_images_${Date.now()}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast(`Downloaded ZIP containing ${doneItems.length} images!`, 'success');
+      } catch (err) {
+        console.error('ZIP generation failed:', err);
+        showToast('Failed to create ZIP package.', 'error');
+      } finally {
+        downloadZipBtn.disabled = false;
+        downloadZipBtn.innerHTML = '<i class="ph-bold ph-file-zip text-base"></i><span>Download ZIP</span>';
+      }
+    });
+
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleIncomingFiles(e.target.files);
+        fileInput.value = ''; // Reset input so same files can be re-selected
+      }
+    });
+
+    // Drag and Drop listeners
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.add('border-indigo-500', 'bg-indigo-500/10', 'scale-[1.01]');
+      }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('border-indigo-500', 'bg-indigo-500/10', 'scale-[1.01]');
+      }, false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      if (e.dataTransfer && e.dataTransfer.files) {
+        handleIncomingFiles(e.dataTransfer.files);
+      }
+    });
+  </script>
+</body>
+</html>
